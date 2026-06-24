@@ -3,11 +3,11 @@
 // provenance the ontology resolved it from, and a Kinetic-layer action.
 // Live-updated via the /subscribe WebSocket feed (see useOntology).
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useOntology } from '@/hooks/useOntology';
 import { useEntitiesStore } from '@/store/entitiesStore';
 import { ontology } from '@/lib/ontology';
-import type { OntologyEntity } from '@/lib/ontology';
+import type { LinkWithTarget, OntologyEntity } from '@/lib/ontology';
 
 function ageFromNs(ns: string): string {
   try {
@@ -32,6 +32,20 @@ function num(v: unknown): number | undefined {
   return typeof v === 'number' ? v : undefined;
 }
 
+function fmtNum(v: unknown, digits = 2): string {
+  return typeof v === 'number' ? v.toFixed(digits) : '—';
+}
+
+/** "src:planetar-sat@1.0.0" → "planetar-sat" for a compact sensor badge. */
+function sensorLabel(v: unknown): string {
+  return String(v ?? 'sensor').replace(/^src:/, '').replace(/@.*$/, '');
+}
+
+function fmtGap(v: unknown): string {
+  if (typeof v !== 'number') return '—';
+  return v < 60 ? `${Math.round(v)} min` : `${(v / 60).toFixed(1)} h`;
+}
+
 function EntityCard({ e }: { e: OntologyEntity }) {
   const b = e.body;
   const lat = num(b.lat);
@@ -42,6 +56,27 @@ function EntityCard({ e }: { e: OntologyEntity }) {
   const [busy, setBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const confirmed = b.status === 'dark-confirmed';
+
+  // Cross-sensor re-identification evidence: the `reacquisition` links the
+  // ontology wrote when a no-MMSI SAR/EO detection matched this vessel's
+  // dead-reckoned track. Refetched whenever the entity advances (a fresh re-ID
+  // bumps updatedNs), so new matches surface live.
+  const [reacq, setReacq] = useState<LinkWithTarget[]>([]);
+  useEffect(() => {
+    if (e.type !== 'planetar:Vessel') return;
+    let alive = true;
+    ontology
+      .getLinks(e.type, e.id, 'reacquisition')
+      .then((ls) => {
+        if (alive) setReacq(ls);
+      })
+      .catch(() => {
+        if (alive) setReacq([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [e.id, e.type, e.updatedNs]);
 
   async function confirmDark() {
     setBusy(true);
@@ -103,6 +138,21 @@ function EntityCard({ e }: { e: OntologyEntity }) {
           {sources.size === 1 ? '' : 's'}
         </dd>
       </dl>
+      {reacq.length > 0 && (
+        <div className="entity-reacq">
+          <div className="entity-reacq-title">
+            Re-identified · {reacq.length} cross-sensor match{reacq.length === 1 ? '' : 'es'}
+          </div>
+          {reacq.map((l) => (
+            <div key={l.link.id} className="entity-reacq-row">
+              <span className="reacq-sensor">{sensorLabel(l.link.body.sensor)}</span>
+              <span className="reacq-meta">score {fmtNum(l.link.body.score)}</span>
+              <span className="reacq-meta">±{fmtNum(l.link.body.predicted_distance_nm)} nm</span>
+              <span className="reacq-meta">{fmtGap(l.link.body.gap_minutes)} gap</span>
+            </div>
+          ))}
+        </div>
+      )}
       {!confirmed && (
         <div className="entity-actions">
           <button className="entity-action" disabled={busy} onClick={confirmDark}>

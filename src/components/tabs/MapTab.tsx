@@ -18,10 +18,13 @@ import { useDetectionStreams } from '@/hooks/useDetectionStreams';
 import { parseMmsi, useAisStore } from '@/store/aisStore';
 import { useChannelsStore } from '@/store/channelsStore';
 import { useDetectionsStore } from '@/store/detectionsStore';
+import { useEntitiesStore } from '@/store/entitiesStore';
 import { useLayoutStore } from '@/store/layoutStore';
+import { useOntology } from '@/hooks/useOntology';
 import { isTracked } from '@/types/ais';
 import type { VesselRecord } from '@/store/aisStore';
 import type { AcousticSiteRecord, TrackRecord } from '@/store/detectionsStore';
+import type { OntologyEntity } from '@/lib/ontology';
 import type { SarChip } from '@/types/detections';
 
 // Fallback map home if the selected Operation carries no `center` — the
@@ -45,7 +48,13 @@ const DTRACK_HEAD_LAYER = 'det-track-heads';
 const ACOUSTIC_SOURCE = 'acoustic-sites';
 const ACOUSTIC_LAYER = 'acoustic-site-dots';
 
-type LayerKey = 'vessels' | 'sar' | 'tracks' | 'acoustic';
+// Fused-entity overlay: vessels the ontology has flagged dark or re-identified
+// across sensors (status from planetar-ontology, not the raw AIS feed).
+const REACQ_SOURCE = 'reacq-entities';
+const REACQ_HALO_LAYER = 'reacq-halo';
+const REACQ_LAYER = 'reacq-dots';
+
+type LayerKey = 'vessels' | 'sar' | 'tracks' | 'acoustic' | 'reacq';
 
 interface LayerDef {
   key: LayerKey;
@@ -60,6 +69,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'sar', label: 'SAR detections', ids: [SAR_LAYER], swatch: '#c084fc' },
   { key: 'tracks', label: 'SAR tracks', ids: [DTRACK_LINE_LAYER, DTRACK_HEAD_LAYER], swatch: '#ffb24a' },
   { key: 'acoustic', label: 'Hydrophones', ids: [ACOUSTIC_LAYER], swatch: '#6fb6ff' },
+  { key: 'reacq', label: 'Re-ID / dark (fused)', ids: [REACQ_HALO_LAYER, REACQ_LAYER], swatch: '#ff5d5d' },
 ];
 
 // CARTO "dark matter" basemap — a purpose-built dark raster basemap derived
@@ -191,6 +201,33 @@ function acousticSitesToFC(sites: AcousticSiteRecord[]): GeoJSON.FeatureCollecti
   };
 }
 
+// Vessels the ontology flagged dark or re-identified — the fused-entity overlay.
+const REACQ_STATUSES = new Set(['dark-suspected', 'dark-confirmed', 'reacquired']);
+function reacqEntitiesToFC(entities: OntologyEntity[]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: entities
+      .filter(
+        (e) =>
+          e.type === 'planetar:Vessel' &&
+          typeof e.body.lat === 'number' &&
+          typeof e.body.lon === 'number' &&
+          REACQ_STATUSES.has(String(e.body.status ?? '')),
+      )
+      .map((e) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [e.body.lon as number, e.body.lat as number] },
+        properties: {
+          kind: 'reacq',
+          id: e.id,
+          mmsi: typeof e.body.mmsi === 'number' ? e.body.mmsi : null,
+          name: e.name ?? (typeof e.body.mmsi === 'number' ? `MMSI ${e.body.mmsi}` : e.id.slice(0, 8)),
+          status: String(e.body.status),
+        },
+      })),
+  };
+}
+
 function escapeHtml(s: unknown): string {
   return String(s).replace(/[&<>"]/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c,
@@ -223,12 +260,21 @@ function detectionPopupHtml(p: Record<string, unknown>): string {
       row('state', isActive ? 'detection active' : 'quiet')
     );
   }
+  if (p.kind === 'reacq') {
+    return (
+      `<div class="mp-title">Fused entity · ${escapeHtml(p.status)}</div>` +
+      row('vessel', p.name) +
+      (p.mmsi ? row('MMSI', p.mmsi) : '') +
+      row('source', 'planetar-ontology re-ID')
+    );
+  }
   return '<div class="mp-title">detection</div>';
 }
 
 export function MapTab() {
   useAisPositions();
   useDetectionStreams();
+  useOntology(); // keep the fused-entity feed live while the map is shown
 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -247,12 +293,14 @@ export function MapTab() {
     sar: true,
     tracks: true,
     acoustic: true,
+    reacq: true,
   });
 
   const vessels = useAisStore((s) => s.byMmsi);
   const sarChips = useDetectionsStore((s) => s.sarChips);
   const detTracks = useDetectionsStore((s) => s.tracks);
   const acousticSites = useDetectionsStore((s) => s.acousticSites);
+  const reacqEntities = useEntitiesStore((s) => s.byId);
   const selectedEntityId = useLayoutStore((s) => s.selectedEntityId);
   const setSelectedEntity = useLayoutStore((s) => s.setSelectedEntity);
   const currentChannelId = useLayoutStore((s) => s.currentChannelId);
@@ -308,6 +356,7 @@ export function MapTab() {
       map.addSource(SAR_SOURCE, { type: 'geojson', data: emptyFC });
       map.addSource(DTRACK_SOURCE, { type: 'geojson', data: emptyFC });
       map.addSource(ACOUSTIC_SOURCE, { type: 'geojson', data: emptyFC });
+      map.addSource(REACQ_SOURCE, { type: 'geojson', data: emptyFC });
 
       // --- detection layers (rendered beneath the vessel layers) ---
       map.addLayer({
@@ -401,6 +450,51 @@ export function MapTab() {
           'circle-stroke-width': 2.5,
         },
       });
+
+      // --- fused-entity overlay (drawn on top): a translucent halo ring + a
+      // solid dot for vessels the ontology flagged dark or re-identified. ---
+      map.addLayer({
+        id: REACQ_HALO_LAYER,
+        type: 'circle',
+        source: REACQ_SOURCE,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 11, 14, 22],
+          'circle-color': [
+            'match', ['get', 'status'],
+            'dark-confirmed', '#ff5d5d',
+            'dark-suspected', '#ffb24a',
+            'reacquired', '#6fb6ff',
+            '#ff5d5d',
+          ],
+          'circle-opacity': 0.14,
+          'circle-stroke-color': [
+            'match', ['get', 'status'],
+            'dark-confirmed', '#ff5d5d',
+            'dark-suspected', '#ffb24a',
+            'reacquired', '#6fb6ff',
+            '#ff5d5d',
+          ],
+          'circle-stroke-width': 1.5,
+          'circle-stroke-opacity': 0.85,
+        },
+      });
+      map.addLayer({
+        id: REACQ_LAYER,
+        type: 'circle',
+        source: REACQ_SOURCE,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 14, 8],
+          'circle-color': [
+            'match', ['get', 'status'],
+            'dark-confirmed', '#ff5d5d',
+            'dark-suspected', '#ffb24a',
+            'reacquired', '#6fb6ff',
+            '#ff5d5d',
+          ],
+          'circle-stroke-color': '#0b101c',
+          'circle-stroke-width': 1.5,
+        },
+      });
     });
 
     const onClick = (e: MapMouseEvent) => {
@@ -418,7 +512,7 @@ export function MapTab() {
       // Detections are self-contained — show a popup rather than hijacking
       // the vessel-shaped Inspector.
       const detHits = map.queryRenderedFeatures(e.point, {
-        layers: [SAR_LAYER, DTRACK_HEAD_LAYER, ACOUSTIC_LAYER],
+        layers: [SAR_LAYER, DTRACK_HEAD_LAYER, ACOUSTIC_LAYER, REACQ_LAYER],
       });
       if (detHits.length === 0) return;
       popupRef.current?.remove();
@@ -428,7 +522,7 @@ export function MapTab() {
         .addTo(map);
     };
     map.on('click', onClick);
-    for (const lid of [VESSEL_LAYER, VESSEL_TRACKED_LAYER, SAR_LAYER, DTRACK_HEAD_LAYER, ACOUSTIC_LAYER]) {
+    for (const lid of [VESSEL_LAYER, VESSEL_TRACKED_LAYER, SAR_LAYER, DTRACK_HEAD_LAYER, ACOUSTIC_LAYER, REACQ_LAYER]) {
       map.on('mouseenter', lid, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', lid, () => { map.getCanvas().style.cursor = ''; });
     }
@@ -614,6 +708,18 @@ export function MapTab() {
     else map.once('load', apply);
   }, [acousticSites]);
 
+  // ---------- fused-entity overlay: ontology-flagged dark / re-ID vessels ----------
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      const src = map.getSource(REACQ_SOURCE) as maplibregl.GeoJSONSource | undefined;
+      if (src) src.setData(reacqEntitiesToFC(Object.values(reacqEntities)));
+    };
+    if (map.isStyleLoaded()) apply();
+    else map.once('load', apply);
+  }, [reacqEntities]);
+
   // ---------- layer visibility toggles ----------
   useEffect(() => {
     const map = mapRef.current;
@@ -666,11 +772,17 @@ export function MapTab() {
     return v?.name ?? `MMSI ${selectedMmsi}`;
   })();
 
+  const reacqCount = useMemo(
+    () => reacqEntitiesToFC(Object.values(reacqEntities)).features.length,
+    [reacqEntities],
+  );
+
   const detCounts: Record<LayerKey, number> = {
     vessels: Object.keys(vessels).length,
     sar: sarChips.length,
     tracks: Object.keys(detTracks).length,
     acoustic: Object.keys(acousticSites).length,
+    reacq: reacqCount,
   };
 
   return (

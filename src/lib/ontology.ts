@@ -23,6 +23,20 @@ export interface OntologyEntity {
   provenance: Record<string, FieldProvenance>;
 }
 
+/** A typed link row, as served by GET /objects/:type/:id/links/:linkType. */
+export interface LinkRecord {
+  id: string;
+  type: string;
+  createdNs: string;
+  body: Record<string, unknown>;
+}
+
+/** One link plus its (optionally resolved) target entity. */
+export interface LinkWithTarget {
+  link: LinkRecord;
+  target: OntologyEntity | null;
+}
+
 /** Outcome of an Action Type execution (POST /actions/:actionType). */
 export interface ActionResult {
   ok?: boolean;
@@ -136,6 +150,16 @@ class OntologyClient {
     );
     if (!r.ok) throw new Error(`getObject ${type}/${id}: HTTP ${r.status}`);
     return (await r.json()) as OntologyEntity;
+  }
+
+  /** Follow typed links from an entity (e.g. `reacquisition` — dark-vessel re-ID evidence). */
+  async getLinks(type: string, id: string, linkType: string): Promise<LinkWithTarget[]> {
+    const r = await fetch(
+      `${this.httpBase}/objects/${encodeURIComponent(type)}/${encodeURIComponent(id)}/links/${encodeURIComponent(linkType)}`,
+    );
+    if (!r.ok) throw new Error(`getLinks ${type}/${id}/${linkType}: HTTP ${r.status}`);
+    const j = (await r.json()) as { links?: LinkWithTarget[] };
+    return j.links ?? [];
   }
 
   async getSchema(): Promise<unknown> {
