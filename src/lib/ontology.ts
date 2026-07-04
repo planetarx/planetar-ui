@@ -23,6 +23,30 @@ export interface OntologyEntity {
   provenance: Record<string, FieldProvenance>;
 }
 
+/** One envelope's metadata as the trace index stores it (GET /trace/:id). */
+export interface TraceEnvelope {
+  id: string;
+  topic: string;
+  source: string;
+  schemaName: string | null;
+  correlationId: string | null;
+  causationId: string | null;
+  createdNs: string;
+  storedNs: string | null;
+  publishedNs: string | null;
+}
+
+/** Causal lineage of one envelope (ARCH-planetar-flow-trace.md §4.2). */
+export interface TraceResponse {
+  id: string;
+  envelope: TraceEnvelope | null;
+  ancestors: TraceEnvelope[];
+  descendants: TraceEnvelope[];
+  correlated: TraceEnvelope[];
+  missingAncestorId: string | null;
+  entity: { id: string; type: string; name: string | null; fields: string[] } | null;
+}
+
 /** Outcome of an Action Type execution (POST /actions/:actionType). */
 export interface ActionResult {
   ok?: boolean;
@@ -142,6 +166,13 @@ class OntologyClient {
     const r = await fetch(`${this.httpBase}/schema`);
     if (!r.ok) throw new Error(`getSchema: HTTP ${r.status}`);
     return r.json();
+  }
+
+  /** Historical trace of one envelope — extends the Flow tab's ring buffer. */
+  async getTrace(id: string): Promise<TraceResponse> {
+    const r = await fetch(`${this.httpBase}/trace/${encodeURIComponent(id)}`);
+    if (!r.ok) throw new Error(`getTrace ${id}: HTTP ${r.status}`);
+    return (await r.json()) as TraceResponse;
   }
 
   /**

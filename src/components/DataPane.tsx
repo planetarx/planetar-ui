@@ -4,6 +4,7 @@ import type { DataTab } from '@/types';
 import { Inspector } from './Inspector';
 import { MapTab } from './tabs/MapTab';
 import { TimelineTab } from './tabs/TimelineTab';
+import { FlowTab } from './tabs/FlowTab';
 import { GraphTab } from './tabs/GraphTab';
 import { ImageryTab } from './tabs/ImageryTab';
 import { SignalTab } from './tabs/SignalTab';
@@ -11,7 +12,8 @@ import { SignalTab } from './tabs/SignalTab';
 const TABS: { id: DataTab; glyph: string; label: string }[] = [
   { id: 'map', glyph: '▣', label: 'Map' },
   { id: 'timeline', glyph: '◷', label: 'Timeline' },
-  { id: 'graph', glyph: '⌘', label: 'Graph' },
+  { id: 'flow', glyph: '⇶', label: 'Flow' },
+  { id: 'graph', glyph: '⌘', label: 'Entities' },
   { id: 'imagery', glyph: '📷', label: 'Imagery' },
   { id: 'signal', glyph: '〰', label: 'Signal' },
 ];
@@ -19,6 +21,7 @@ const TABS: { id: DataTab; glyph: string; label: string }[] = [
 const TAB_VIEWS: Record<DataTab, ComponentType> = {
   map: MapTab,
   timeline: TimelineTab,
+  flow: FlowTab,
   graph: GraphTab,
   imagery: ImageryTab,
   signal: SignalTab,

@@ -261,11 +261,33 @@ wss.on('listening', () => {
   broker.start();
 });
 
+// Broker-style topic patterns: `*` matches exactly one dot-segment, a
+// trailing `**` matches the rest (so `**` alone matches everything).
+// Mirrors src/lib/topic.ts topicMatches — keep the two in sync.
+function topicMatches(pattern, topic) {
+  if (pattern === topic) return true;
+  if (!pattern.includes('*')) return false;
+  const p = pattern.split('.');
+  const t = topic.split('.');
+  for (let i = 0; i < p.length; i++) {
+    if (p[i] === '**') return i === p.length - 1;
+    if (i >= t.length) return false;
+    if (p[i] !== '*' && p[i] !== t[i]) return false;
+  }
+  return p.length === t.length;
+}
+
+function clientWants(c, topic) {
+  if (c.subscriptions.has(topic)) return true;
+  for (const p of c.patterns) if (topicMatches(p, topic)) return true;
+  return false;
+}
+
 function dispatchEnvelope(env) {
   for (const ws of wss.clients) {
     if (ws.readyState !== 1) continue;
     const c = ws._planetarClient;
-    if (!c?.subscriptions.has(env.topic)) continue;
+    if (!c || !clientWants(c, env.topic)) continue;
     ws.send(JSON.stringify({ type: 'envelope', envelope: env }));
   }
 }
@@ -307,6 +329,7 @@ wss.on('connection', (socket, req) => {
     id: uuidv7(),
     socket,
     subscriptions: new Set(),
+    patterns: new Set(),
     timers: [],
   };
   socket._planetarClient = client;
@@ -323,7 +346,14 @@ wss.on('connection', (socket, req) => {
 
     if (msg.type === 'subscribe' && Array.isArray(msg.topics)) {
       for (const t of msg.topics) {
-        if (typeof t !== 'string' || client.subscriptions.has(t)) continue;
+        if (typeof t !== 'string') continue;
+        if (t.includes('*')) {
+          // Pattern subscription (e.g. the Flow tab's `**`) — match-only;
+          // synthetic chatter needs a concrete topic to invent traffic for.
+          client.patterns.add(t);
+          continue;
+        }
+        if (client.subscriptions.has(t)) continue;
         client.subscriptions.add(t);
         if (broker.isOpen()) {
           // Real mode: broker is already piping us everything via the
@@ -337,7 +367,10 @@ wss.on('connection', (socket, req) => {
     }
 
     if (msg.type === 'unsubscribe' && Array.isArray(msg.topics)) {
-      for (const t of msg.topics) client.subscriptions.delete(t);
+      for (const t of msg.topics) {
+        client.subscriptions.delete(t);
+        client.patterns.delete(t);
+      }
       return;
     }
 

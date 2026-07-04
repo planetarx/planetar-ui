@@ -1,4 +1,4 @@
-export type DataTab = 'map' | 'timeline' | 'graph' | 'imagery' | 'signal';
+export type DataTab = 'map' | 'timeline' | 'flow' | 'graph' | 'imagery' | 'signal';
 
 export type PaneKey = 'rail' | 'channels' | 'conversation' | 'data';
 
