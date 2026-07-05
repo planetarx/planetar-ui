@@ -2,7 +2,8 @@
 // REST for queries, a WebSocket `/subscribe` feed for live entity changes.
 // Deliberately mirrors the shape of lib/broker.ts.
 
-const DEFAULT_HTTP = 'http://127.0.0.1:4000';
+// Override with VITE_ONTOLOGY_URL (e.g. the pm2 tier serves :7012 on bb).
+const DEFAULT_HTTP: string = import.meta.env.VITE_ONTOLOGY_URL ?? 'http://127.0.0.1:4000';
 
 export interface FieldProvenance {
   obs: string;

@@ -30,24 +30,29 @@ function fmtDeltaNs(delta: bigint): string {
   return `${sign}${(Number(abs) / 1_000_000_000).toFixed(2)} s`;
 }
 
+/** A clock of '0' means "never stamped" (publisher left it for the broker,
+ *  broker didn't rewrite) — skip the hop rather than render 1970. */
+const stamped = (ns: string | null): ns is string => ns != null && ns !== '0';
+
 function hops(row: TraceRow): { label: string; at: string; delta: string | null; approx?: boolean }[] {
   const out: { label: string; at: string; delta: string | null; approx?: boolean }[] = [];
   out.push({ label: 'created at source', at: fmtClock(row.createdNs), delta: null });
-  if (row.storedNs) {
+  if (stamped(row.storedNs)) {
     out.push({
       label: 'stored (broker WAL)',
       at: fmtClock(row.storedNs),
       delta: fmtDeltaNs(BigInt(row.storedNs) - BigInt(row.createdNs)),
     });
   }
-  if (row.publishedNs && row.storedNs) {
+  if (stamped(row.publishedNs)) {
+    const prev = stamped(row.storedNs) ? row.storedNs : row.createdNs;
     out.push({
       label: 'published (fan-out)',
       at: fmtClock(row.publishedNs),
-      delta: fmtDeltaNs(BigInt(row.publishedNs) - BigInt(row.storedNs)),
+      delta: fmtDeltaNs(BigInt(row.publishedNs) - BigInt(prev)),
     });
   }
-  if (row.receivedMs != null && row.publishedNs) {
+  if (row.receivedMs != null && stamped(row.publishedNs)) {
     const receivedNs = BigInt(row.receivedMs) * 1_000_000n;
     out.push({
       label: 'received (this shell)',

@@ -76,21 +76,6 @@ export class FlowRenderer {
     if (!l) return;
     const now = performance.now();
 
-    if (s.kind === 'entity') {
-      const onto = l.consumers.get('ontology')!;
-      const from = rectRightCenter(l.bus);
-      const to = rectLeftCenter(onto);
-      this.#particles.push({
-        envId: null,
-        color: MODALITY_COLORS.entity,
-        seg: sCurve(from.x, from.y, to.x - 4, to.y),
-        t0: now,
-        dur: STAGE_MS.fanout,
-        next: null,
-      });
-      return;
-    }
-
     const laneRect = l.lanes.get(s.lane) ?? l.laneOverflow?.rect;
     if (!laneRect) return;
     if (this.#particles.length >= PARTICLE_CAP) {

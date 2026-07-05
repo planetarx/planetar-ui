@@ -115,9 +115,9 @@ export interface FlowSnapshot {
   entityEvents: number;
 }
 
-export type Spawn =
-  | { kind: 'msg'; id: string; producer: string; lane: string; modality: Modality }
-  | { kind: 'entity'; entityId: string };
+// Entity mutations arrive as real entity.<kind>.updated envelopes (ontology
+// P7), so they spawn ordinary msg particles — no synthetic pulse kind needed.
+export type Spawn = { kind: 'msg'; id: string; producer: string; lane: string; modality: Modality };
 
 const BUFFER_MAX = 3000;
 const TICKER_MAX = 60;
@@ -171,9 +171,9 @@ class FlowEngine {
     if (++this.#refs > 1) return;
     this.#unsubTopic = broker.subscribe('**');
     this.#unsubEnv = broker.onEnvelope((env) => this.#ingest(env));
-    this.#unsubEntity = ontology.onEntity((e) => {
+    // WS feed = sink liveness + counter; the particles come from the bus.
+    this.#unsubEntity = ontology.onEntity(() => {
       this.#entityEvents++;
-      this.#emit({ kind: 'entity', entityId: e.id });
     });
   }
 
