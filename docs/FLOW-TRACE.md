@@ -10,9 +10,15 @@ planetar-broker (topic-family lanes) → sinks. The topology is **derived from
 observed traffic** — nothing is configured; a service appears because its
 envelopes do. Every particle on the canvas is one real message. Clicking a
 particle or a ticker row opens the **trace panel**: per-hop nanosecond timings
-(created → stored → published → received), the causal chain via
-`causationId`, correlated siblings via `correlationId`, and the entity fields
-the message set in planetar-ontology.
+(created → stored → published → received; never-stamped clocks of `0` are
+skipped), the causal chain via `causationId`, correlated siblings via
+`correlationId`, and the entity fields the message set in planetar-ontology.
+
+Since ontology P7, entity mutations arrive as real `entity.<kind>.updated`
+envelopes — planetar-ontology shows up as a **producer** node with a green
+`entity` lane, and traces run *through* the graph (AIS ping → merge →
+downstream). The ontology's own WS feed is used only for sink liveness and
+the entity-event counter; there is no synthetic pulse.
 
 ## Pieces
 
@@ -34,6 +40,13 @@ side: `*` = one dot-segment, trailing `**` = the rest (`**` alone = everything).
 The Flow tab subscribes `['**']`. `topicMatches` is duplicated in
 `src/lib/topic.ts` — keep the two in sync. Mock-mode synthetic chatter ignores
 pattern topics.
+
+Build/dev-time URLs: `VITE_WS_URL` (bridge, default `ws://127.0.0.1:9100`) and
+`VITE_ONTOLOGY_URL` (Object API, default `http://127.0.0.1:4000`). On the bb
+pm2 tier those are `ws://localhost:7011` / `http://localhost:7012` — both must
+be baked into any production `dist/` build, and a dev session on bb should set
+`VITE_ONTOLOGY_URL=http://127.0.0.1:7012` rather than run a second ontology
+(one SQLite writer only; see `~/data/vaults/docs/DEPLOY-planetar.md`).
 
 ## Modality palette
 
