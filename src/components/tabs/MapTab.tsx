@@ -62,22 +62,26 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'acoustic', label: 'Hydrophones', ids: [ACOUSTIC_LAYER], swatch: '#6fb6ff' },
 ];
 
-// CARTO "dark matter" basemap — a purpose-built dark raster basemap derived
-// from OpenStreetMap data. Free for reasonable use, no API key. Three CDN
-// subdomains let MapLibre parallelise tile fetches.
+// Esri "World Dark Gray" canvas basemap — a dark raster basemap with a
+// separate label overlay. No API key. (CARTO's dark_all raster, used until
+// 2026-10, now returns an "API KEY REQUIRED" placeholder tile with HTTP 200.)
+// Esri tile paths are {z}/{y}/{x}, not {z}/{x}/{y}.
+const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
 const MAP_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
     basemap: {
       type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-      ],
+      tiles: [`${ESRI_CANVAS}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`],
       tileSize: 256,
-      attribution: '© OpenStreetMap contributors © CARTO',
-      maxzoom: 20,
+      attribution: 'Esri, HERE, Garmin, © OpenStreetMap contributors',
+      maxzoom: 16,
+    },
+    labels: {
+      type: 'raster',
+      tiles: [`${ESRI_CANVAS}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`],
+      tileSize: 256,
+      maxzoom: 16,
     },
   },
   layers: [
@@ -92,6 +96,7 @@ const MAP_STYLE: maplibregl.StyleSpecification = {
         'raster-contrast': 0.05,
       },
     },
+    { id: 'basemap-labels', type: 'raster', source: 'labels' },
   ],
 };
 
