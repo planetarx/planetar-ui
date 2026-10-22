@@ -239,6 +239,7 @@ export function MapTab() {
   const mapRef = useRef<MapLibreMap | null>(null);
   const flownToTrackedRef = useRef<Set<number>>(new Set());
   const popupRef = useRef<maplibregl.Popup | null>(null);
+  const homeServerRef = useRef<string | null>(null);
 
   // Follow mode: when true the camera tracks position updates for the selected
   // vessel; when false (user panned/zoomed/dragged) the camera stays put and a
@@ -484,6 +485,14 @@ export function MapTab() {
     // Plus two longer catch-ups for slow layout transitions.
     timeoutIds.push(setTimeout(settle, 150));
     timeoutIds.push(setTimeout(settle, 400));
+    // MapLibre swaps in a new transform when the style loads, and a camera
+    // animation that began earlier keeps re-applying the old one — whose
+    // width is the pre-layout one (36 px in practice). The result is a
+    // stretched map that stays stretched until the window is resized. Re-measure
+    // once the style is in and again once the map first goes idle (after any
+    // animation has finished).
+    map.once('load', settle);
+    map.once('idle', settle);
 
     mapRef.current = map;
     return () => {
@@ -528,6 +537,11 @@ export function MapTab() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !serverHome) return;
+    // The lifecycle effect already centred on the mount-time Operation;
+    // only fly on an actual switch.
+    const prev = homeServerRef.current;
+    homeServerRef.current = currentServerId;
+    if (prev === null || prev === currentServerId) return;
     map.flyTo({
       center: [serverHome.lon, serverHome.lat],
       zoom: serverHome.zoom ?? INITIAL_ZOOM,
