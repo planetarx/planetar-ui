@@ -14,7 +14,7 @@ import type { VesselSummary } from '@/types';
 
 const FLEET_TOPIC = 'vessel.ais.fleet';
 
-interface FleetPayload {
+export interface FleetPayload {
   event: 'appeared' | 'update' | 'static-update' | 'anomaly' | 'lost';
   mmsi: number;
   channelId: string;
@@ -35,7 +35,7 @@ interface FleetPayload {
   };
 }
 
-function asVesselSummary(p: FleetPayload, status?: VesselSummary['status']): VesselSummary {
+export function asVesselSummary(p: FleetPayload, status?: VesselSummary['status']): VesselSummary {
   const v = p.vessel ?? ({ mmsi: p.mmsi } as FleetPayload['vessel']);
   return {
     mmsi: v.mmsi ?? p.mmsi,

@@ -16,6 +16,7 @@ interface State {
   markVesselStatus: (channelId: string, status: NonNullable<VesselSummary['status']>) => void;
   bumpUnread: (channelId: string) => void;
   clearUnread: (channelId: string) => void;
+  remove: (channelId: string) => void;
 }
 
 const initialOrder = seedChannels.map((c) => c.id);
@@ -67,6 +68,13 @@ export const useChannelsStore = create<State>()((set) => ({
       if (!cur?.unread) return s;
       const { unread: _u, ...rest } = cur;
       return { channels: { ...s.channels, [channelId]: rest as Channel } };
+    }),
+  remove: (channelId) =>
+    set((s) => {
+      if (!s.channels[channelId]) return s;
+      const channels = { ...s.channels };
+      delete channels[channelId];
+      return { channels, order: s.order.filter((id) => id !== channelId) };
     }),
 }));
 
