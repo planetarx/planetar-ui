@@ -148,8 +148,13 @@ class OntologyClient {
 
   // ---- REST (the OSDK-equivalent surface) ----
 
-  async listObjects(type: string): Promise<OntologyEntity[]> {
-    const r = await fetch(`${this.httpBase}/objects/${encodeURIComponent(type)}`);
+  /** Newest-updated first. The server defaults to limit 100 and caps it at 1000. */
+  async listObjects(type: string, page?: { limit?: number; offset?: number }): Promise<OntologyEntity[]> {
+    const q = new URLSearchParams();
+    if (page?.limit != null) q.set('limit', String(page.limit));
+    if (page?.offset != null) q.set('offset', String(page.offset));
+    const qs = q.size ? `?${q}` : '';
+    const r = await fetch(`${this.httpBase}/objects/${encodeURIComponent(type)}${qs}`);
     if (!r.ok) throw new Error(`listObjects ${type}: HTTP ${r.status}`);
     const j = (await r.json()) as { objects?: OntologyEntity[] };
     return j.objects ?? [];

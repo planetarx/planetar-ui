@@ -8,6 +8,11 @@ import type { AisPosition, VesselStatus } from '@/types/ais';
 
 const MAX_TRACK_POINTS = 256;
 
+/** No report for this long → painted grey ('lost'). */
+export const STALE_AFTER_MS = 60 * 60 * 1000;
+/** No report for this long → dropped from the map. */
+export const EXPIRE_AFTER_MS = 24 * 60 * 60 * 1000;
+
 export interface TrackPoint {
   lat: number;
   lon: number;
@@ -30,6 +35,10 @@ interface State {
   markStatus: (mmsi: number, status: VesselStatus) => void;
   remove: (mmsi: number) => void;
   clearTrack: (mmsi: number) => void;
+  /** Last-known positions from the ontology, loaded before live AIS arrives. */
+  seed: (positions: AisPosition[], nowMs?: number) => void;
+  /** Grey out records older than STALE_AFTER_MS, drop those older than EXPIRE_AFTER_MS. */
+  age: (nowMs?: number) => void;
 }
 
 function nsToMs(ns?: string | number): number {
@@ -85,6 +94,47 @@ export const useAisStore = create<State>()((set) => ({
       const r = s.byMmsi[mmsi];
       if (!r) return s;
       return { byMmsi: { ...s.byMmsi, [mmsi]: { ...r, track: [] } } };
+    }),
+
+  seed: (positions, nowMs = Date.now()) =>
+    set((s) => {
+      const next = { ...s.byMmsi };
+      let changed = false;
+      for (const p of positions) {
+        const lastSeenMs = nsToMs(p.lastSeenNs);
+        const age = nowMs - lastSeenMs;
+        if (age > EXPIRE_AFTER_MS) continue;
+        // Live AIS may already have beaten the fetch; never overwrite it.
+        const prev = next[p.mmsi];
+        if (prev && prev.lastSeenMs >= lastSeenMs) continue;
+        next[p.mmsi] = {
+          mmsi: p.mmsi,
+          latest: p,
+          track: [{ lat: p.lat, lon: p.lon, ts: lastSeenMs }],
+          firstSeenMs: nsToMs(p.firstSeenNs ?? p.lastSeenNs),
+          lastSeenMs,
+          status: age > STALE_AFTER_MS ? 'lost' : 'live',
+          serverId: p.serverId,
+        };
+        changed = true;
+      }
+      return changed ? { byMmsi: next } : s;
+    }),
+
+  age: (nowMs = Date.now()) =>
+    set((s) => {
+      let next: Record<number, VesselRecord> | null = null;
+      for (const r of Object.values(s.byMmsi)) {
+        const age = nowMs - r.lastSeenMs;
+        if (age > EXPIRE_AFTER_MS) {
+          next ??= { ...s.byMmsi };
+          delete next[r.mmsi];
+        } else if (age > STALE_AFTER_MS && r.status !== 'lost') {
+          next ??= { ...s.byMmsi };
+          next[r.mmsi] = { ...r, status: 'lost' };
+        }
+      }
+      return next ? { byMmsi: next } : s;
     }),
 }));
 
