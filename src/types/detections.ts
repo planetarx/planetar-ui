@@ -5,14 +5,22 @@
 // Captured 2026-05-19 from live envelopes (acoustic) and producer source
 // (sar/track — planetar-sat/src/planetar_sat).
 
-/** `sar.chip` — schema `planetar.sar.chip`. One CFAR ship detection. */
+/** `sar.chip` — schema `planetar.sar.chip`. One ship detection, from CFAR or
+ *  (since 2026-10-28) planetar-fusion's learned detector. */
 export interface SarChip {
   scene_id: string;
   lat: number;
   lon: number;
+  /** CFAR signal-to-noise ratio; for `detector: 'learned'`, the heatmap score (0–1). */
   snr: number;
   bbox_px: [number, number, number, number];
   acquired_at_ns: number;
+  /** Absent from pre-2026-10-28 producers, which are all CFAR. */
+  detector?: 'cfar' | 'learned';
+  /** Learned detector only (null from CFAR). */
+  length_m?: number | null;
+  is_vessel?: boolean | null;
+  is_fishing?: boolean | null;
 }
 
 /** `track.update` — schema `planetar.track.update`. One position of a

@@ -143,7 +143,17 @@ function sarChipsToFC(chips: SarChip[]): GeoJSON.FeatureCollection {
     features: chips.map((c, i) => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
-      properties: { kind: 'sar', idx: i, scene_id: c.scene_id, snr: c.snr },
+      properties: {
+        kind: 'sar',
+        idx: i,
+        scene_id: c.scene_id,
+        snr: c.snr,
+        detector: c.detector ?? 'cfar',
+        // MapLibre drops null properties; omit them rather than send nulls.
+        ...(c.length_m != null && { length_m: c.length_m }),
+        ...(c.is_vessel != null && { is_vessel: c.is_vessel }),
+        ...(c.is_fishing != null && { is_fishing: c.is_fishing }),
+      },
     })),
   };
 }
@@ -208,6 +218,25 @@ function detectionPopupHtml(p: Record<string, unknown>): string {
     `<div class="mp-row"><span class="mp-k">${k}</span><span class="mp-v">${escapeHtml(v)}</span></div>`;
   const isActive = p.active === true || p.active === 'true';
   if (p.kind === 'sar') {
+    if (p.detector === 'learned') {
+      const score = typeof p.snr === 'number' ? p.snr.toFixed(2) : p.snr;
+      const len = typeof p.length_m === 'number' ? `${Math.round(p.length_m)} m` : null;
+      const cls =
+        p.is_vessel === undefined
+          ? null
+          : p.is_vessel === true || p.is_vessel === 'true'
+            ? p.is_fishing === true || p.is_fishing === 'true'
+              ? 'vessel · fishing'
+              : 'vessel'
+            : 'non-vessel';
+      return (
+        `<div class="mp-title">SAR detection · learned</div>` +
+        row('scene', p.scene_id) +
+        row('score', score) +
+        (len ? row('length', len) : '') +
+        (cls ? row('class', cls) : '')
+      );
+    }
     const snr = typeof p.snr === 'number' ? p.snr.toFixed(1) : p.snr;
     return `<div class="mp-title">SAR detection</div>${row('scene', p.scene_id)}${row('SNR', snr)}`;
   }
