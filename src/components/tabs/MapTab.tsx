@@ -260,6 +260,12 @@ function detectionPopupHtml(p: Record<string, unknown>): string {
   return '<div class="mp-title">detection</div>';
 }
 
+
+/** The map shows the active Operation's vessels; untagged ones (legacy producer) everywhere. */
+function inOperation(r: { serverId?: string }, currentServerId: string | null | undefined): boolean {
+  return !r.serverId || r.serverId === currentServerId;
+}
+
 export function MapTab() {
   useAisPositions();
   useDetectionStreams();
@@ -590,9 +596,7 @@ export function MapTab() {
       // planetar-ais share one broker the store holds both fleets — a vessel
       // tagged with another Operation's serverId belongs on that tab, not
       // this one. Untagged vessels (legacy producer) are shown everywhere.
-      const records = Object.values(vessels).filter(
-        (r) => !r.serverId || r.serverId === currentServerId,
-      );
+      const records = Object.values(vessels).filter((r) => inOperation(r, currentServerId));
       src.setData(vesselsToFeatureCollection(records));
       // fly to a tracked vessel the first time it appears
       for (const r of records) {
@@ -715,7 +719,8 @@ export function MapTab() {
   })();
 
   const detCounts: Record<LayerKey, number> = {
-    vessels: Object.keys(vessels).length,
+    // What the map draws: this Operation's vessels only (see inOperation).
+    vessels: Object.values(vessels).filter((r) => inOperation(r, currentServerId)).length,
     sar: sarChips.length,
     tracks: Object.keys(detTracks).length,
     acoustic: Object.keys(acousticSites).length,
