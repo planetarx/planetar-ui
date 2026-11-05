@@ -198,9 +198,14 @@ function acousticSitesToFC(sites: AcousticSiteRecord[]): GeoJSON.FeatureCollecti
         kind: 'acoustic',
         site_code: s.site_code,
         site_name: s.site_name,
+        source: s.source,
         detections: s.detections,
         clips: s.clips,
-        active: s.latest.detected,
+        // OrcaHello: a detection in the last hour (as of when it arrived)
+        active:
+          s.source === 'orcahello'
+            ? Date.now() - (s.lastAtMs ?? 0) < 60 * 60_000
+            : (s.latest?.detected ?? false),
       },
     })),
   };
@@ -253,7 +258,10 @@ function detectionPopupHtml(p: Record<string, unknown>): string {
     return (
       `<div class="mp-title">Hydrophone · ${escapeHtml(p.site_name)}</div>` +
       row('site', p.site_code) +
-      row('clips', `${p.detections} det / ${p.clips} total`) +
+      (p.source === 'orcahello'
+        ? row('OrcaHello 24 h', `${p.clips} flagged · ${p.detections} moderator-confirmed`) +
+          row('credit', 'Orcasound (orcasound.net)')
+        : row('clips', `${p.detections} det / ${p.clips} total`)) +
       row('state', isActive ? 'detection active' : 'quiet')
     );
   }

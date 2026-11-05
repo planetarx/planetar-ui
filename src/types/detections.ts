@@ -53,6 +53,21 @@ export interface AcousticDetect {
   detected: boolean;
 }
 
+/** `acoustic.orcahello` — schema `acoustic.OrcaHello.v1`. One OrcaHello (Orcasound's
+ *  AI call detector) detection, whitelisted by planetar-acoustic/orcahello; republished
+ *  when a moderator reviews it, and the whole 24 h window every 30 min. */
+export interface OrcaHelloDetection {
+  id: string;
+  timestamp: string | null;
+  confidence: number | null;
+  reviewed: boolean;
+  found: string | null;
+  tagList: string[];
+  location: { id: string | null; name: string | null; latitude: number | null; longitude: number | null };
+  audioUri: string | null;
+  spectrogramUri: string | null;
+}
+
 /**
  * `eo.detection` — schema `planetar.eo.detection.v1`. NOTE: a frame-relative
  * bounding box, NOT georeferenced — it cannot go on the map. Kept here for the
@@ -72,4 +87,5 @@ export const DETECTION_TOPICS = {
   sarChip: 'sar.chip',
   trackUpdate: 'track.update',
   acousticDetect: 'acoustic.detect',
+  orcaHello: 'acoustic.orcahello',
 } as const;

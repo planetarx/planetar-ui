@@ -1,17 +1,18 @@
-// Singleton subscription to the SAR / track / acoustic detection topics.
+// Singleton subscription to the SAR / track / acoustic / OrcaHello detection topics.
 // Mounted by MapTab; ref-counted so tab switches don't flap the broker subs.
 
 import { useEffect } from 'react';
 import { broker } from '@/lib/broker';
 import { useDetectionsStore } from '@/store/detectionsStore';
 import { DETECTION_TOPICS } from '@/types/detections';
-import type { AcousticDetect, SarChip, TrackUpdate } from '@/types/detections';
+import type { AcousticDetect, OrcaHelloDetection, SarChip, TrackUpdate } from '@/types/detections';
 import type { ZmesgEnvelope } from '@/types/zmesg';
 
 const TOPICS = [
   DETECTION_TOPICS.sarChip,
   DETECTION_TOPICS.trackUpdate,
   DETECTION_TOPICS.acousticDetect,
+  DETECTION_TOPICS.orcaHello,
 ];
 
 let unsub: (() => void) | null = null;
@@ -37,6 +38,11 @@ function handle(env: ZmesgEnvelope) {
       if (p && typeof p.lat === 'number' && typeof p.lon === 'number' && p.site_code) {
         store.ingestAcousticDetect(p);
       }
+      break;
+    }
+    case DETECTION_TOPICS.orcaHello: {
+      const p = env.payload as OrcaHelloDetection | undefined;
+      if (p && p.id && p.location && Array.isArray(p.tagList)) store.ingestOrcaHello(p);
       break;
     }
   }
